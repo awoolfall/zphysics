@@ -844,6 +844,59 @@ pub const ShapeFilter = extern struct {
     }
 };
 
+pub const CollideShapeCollector = extern struct {
+    __v: *const VTable,
+
+    pub usingnamespace Methods(@This());
+
+    pub fn Methods(comptime T: type) type {
+        return extern struct {
+            pub inline fn Reset(
+                self: *T
+            ) void {
+                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).Reset();
+            }
+            pub inline fn OnBody(
+                self: *T,
+                in_body: *const Body
+            ) void {
+                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).OnBody(
+                    in_body
+                );
+            }
+            pub inline fn AddHit(
+                self: *T,
+                in_result: *const CollideShapeResult
+            ) void {
+                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).AddHit(
+                    in_result
+                );
+            }
+        };
+    }
+
+    pub const VTable = extern struct {
+        __header: VTableHeader = .{},
+        reset: *const fn(
+            self: *CollideShapeCollector
+        ) callconv(.C) void,
+        onBody: *const fn(
+            self: *CollideShapeCollector,
+            in_body: *const Body
+        ) callconv(.C) void,
+        addHit: *const fn(
+            self: *CollideShapeCollector,
+            in_result: *const CollideShapeResult
+        ) callconv(.C) void,
+    };
+
+    comptime {
+        assert(@sizeOf(VTable) == @sizeOf(c.JPC_CollideShapeCollectorVTable));
+        assert(@offsetOf(VTable, "reset") == @offsetOf(c.JPC_CollideShapeCollectorVTable, "Reset"));
+        assert(@offsetOf(VTable, "addHit") == @offsetOf(c.JPC_CollideShapeCollectorVTable, "AddHit"));
+    }
+};
+
 pub const ContactSettings = extern struct {
     combined_friction: f32,
     combined_restitution: f32,
@@ -2239,6 +2292,34 @@ pub const NarrowPhaseQuery = opaque {
         );
         return .{ .has_hit = has_hit, .hit = hit };
     }
+
+    pub fn collideShape(
+        query: *const NarrowPhaseQuery,
+        shape: *const Shape,
+        shape_scale: [3]f32,
+        center_of_mass_transform: [16]Real,
+        base_offset: [3]Real,
+        collector: *CollideShapeCollector,
+        args: struct {
+            broad_phase_layer_filter: ?*const BroadPhaseLayerFilter = null,
+            object_layer_filter: ?*const ObjectLayerFilter = null,
+            body_filter: ?*const BodyFilter = null,
+            shape_filter: ?*const ShapeFilter = null,
+        },
+    ) void {
+        c.JPC_NarrowPhaseQuery_CollideShape(
+            @as(*const c.JPC_NarrowPhaseQuery, @ptrCast(query)),
+            @as(*const c.JPC_Shape, @ptrCast(shape)),
+            &shape_scale,
+            &center_of_mass_transform,
+            &base_offset,
+            collector,
+            args.broad_phase_layer_filter,
+            args.object_layer_filter,
+            args.body_filter,
+            args.shape_filter
+        );
+    }
 };
 //--------------------------------------------------------------------------------------------------
 //
@@ -2589,6 +2670,14 @@ pub const Character = opaque {
         c.JPC_Character_Destroy(@as(*c.JPC_Character, @ptrCast(character)));
     }
 
+    pub fn postSimulation(character: *Character, inMaxSeperationDistance: f32, inLockBodies: bool) void {
+        c.JPC_Character_PostSimulation(@as(*c.JPC_Character, @ptrCast(character)), inMaxSeperationDistance, inLockBodies);
+    }
+
+    pub fn isSupported(character: *Character) bool {
+        return c.JPC_Character_IsSupported(@as(*c.JPC_Character, @ptrCast(character)));
+    }
+
     pub fn addToPhysicsSystem(character: *Character, args: struct { activation: Activation = .activate, lock_bodies: bool = true }) void {
         c.JPC_Character_AddToPhysicsSystem(
             @as(*c.JPC_Character, @ptrCast(character)),
@@ -2598,6 +2687,10 @@ pub const Character = opaque {
     }
     pub fn removeFromPhysicsSystem(character: *Character, args: struct { lock_bodies: bool = true }) void {
         c.JPC_Character_RemoveFromPhysicsSystem(@as(*c.JPC_Character, @ptrCast(character)), args.lock_bodies);
+    }
+
+    pub fn getBodyId(character: *Character) BodyId {
+        return c.JPC_Character_GetBodyID(@as(*c.JPC_Character, @ptrCast(character)));
     }
 
     pub fn getPosition(character: *const Character) [3]Real {
@@ -2718,6 +2811,19 @@ pub const CharacterVirtual = opaque {
     }
     pub fn getGroundState(character: *CharacterVirtual) CharacterGroundState {
         return @enumFromInt(c.JPC_CharacterVirtual_GetGroundState(@as(*c.JPC_CharacterVirtual, @ptrCast(character))));
+    }
+    pub fn getGroundNormal(character: *const CharacterVirtual) [3]f32 {
+        var normal: [3]f32 = undefined;
+        c.JPC_CharacterVirtual_GetGroundNormal(@as(*const c.JPC_CharacterVirtual, @ptrCast(character)), &normal);
+        return normal;
+    }
+    pub fn getGroundBodyID(character: *const CharacterVirtual) ?BodyId {
+        var body_id: BodyId = undefined;
+        if (c.JPC_CharacterVirtual_GetGroundBodyID(@as(*const c.JPC_CharacterVirtual, @ptrCast(character)), &body_id)) {
+            return body_id;
+        } else {
+            return null;
+        }
     }
 
     pub fn getPosition(character: *const CharacterVirtual) [3]Real {
