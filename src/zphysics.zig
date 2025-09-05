@@ -864,6 +864,14 @@ pub const CollideShapeCollector = extern struct {
                     in_body
                 );
             }
+            pub inline fn SetUserData(
+                self: *T,
+                in_user_data: u64,
+            ) void {
+                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).SetUserData(
+                    in_user_data
+                );
+            }
             pub inline fn AddHit(
                 self: *T,
                 in_result: *const CollideShapeResult
@@ -883,6 +891,10 @@ pub const CollideShapeCollector = extern struct {
         onBody: *const fn(
             self: *CollideShapeCollector,
             in_body: *const Body
+        ) callconv(.C) void,
+        setUserData: *const fn(
+            self: *CollideShapeCollector,
+            user_data: u64,
         ) callconv(.C) void,
         addHit: *const fn(
             self: *CollideShapeCollector,

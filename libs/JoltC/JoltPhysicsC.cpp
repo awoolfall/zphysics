@@ -1265,9 +1265,22 @@ public:
     CollideShapeCollector(JPH::CollideShapeCollector* collector): m_collector(collector) {}
     virtual ~CollideShapeCollector() {}
 
-    virtual void Reset() override { m_collector->Reset(); }
-    virtual void OnBody(const JPH::Body &inBody) override { m_collector->OnBody(inBody); }
-    virtual void AddHit(const JPH::CollideShapeResult &inResult) override { m_collector->AddHit(inResult); }
+    virtual void Reset() override {
+        assert(m_collector != nullptr);
+        m_collector->Reset();
+    }
+    virtual void OnBody(const JPH::Body &inBody) override {
+        assert(m_collector != nullptr);
+        m_collector->OnBody(inBody);
+    }
+    virtual void SetUserData(uint64_t inUserData) override {
+        assert(m_collector != nullptr);
+        m_collector->SetUserData(inUserData);
+    }
+    virtual void AddHit(const JPH::CollideShapeResult &inResult) override {
+        assert(m_collector != nullptr);
+        m_collector->AddHit(inResult);
+    }
 
     JPH::CollideShapeCollector* m_collector;
 };
@@ -1286,7 +1299,7 @@ JPC_NarrowPhaseQuery_CollideShape(const JPC_NarrowPhaseQuery *in_query,
 {
     assert(in_query && in_shape && io_collector);
 
-    CollideShapeCollector collector(static_cast<JPH::CollideShapeCollector*>(io_collector));
+    CollideShapeCollector collector(reinterpret_cast<JPH::CollideShapeCollector*>(io_collector));
 
     const JPH::CollideShapeSettings settings{};
     const JPH::BroadPhaseLayerFilter broad_phase_layer_filter{};

@@ -904,6 +904,11 @@ typedef struct JPC_CollideShapeCollectorVTable
 
     // Required, *cannot* be NULL.
     void
+    (*SetUserData)(void *in_self,
+            const uint64_t *in_user_data);
+
+    // Required, *cannot* be NULL.
+    void
     (*AddHit)(void *in_self,
             const JPC_CollideShapeResult *in_result);
 } JPC_CollideShapeCollectorVTable;
