@@ -1,5 +1,16 @@
 const std = @import("std");
 
+fn addMacros(module: *std.Build.Module, options: anytype) void {
+    if (options.enable_cross_platform_determinism)
+        module.addCMacro("JPH_CROSS_PLATFORM_DETERMINISTIC", "");
+    if (options.enable_debug_renderer)
+        module.addCMacro("JPH_DEBUG_RENDERER", "");
+    if (options.use_double_precision)
+        module.addCMacro("JPH_DOUBLE_PRECISION", "");
+    if (options.enable_asserts)
+        module.addCMacro("JPH_ENABLE_ASSERTS", "");
+}
+
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
@@ -37,6 +48,12 @@ pub fn build(b: *std.Build) void {
         ) orelse true,
     };
 
+    const user_extensions = b.option(
+        []const std.Build.LazyPath,
+        "user_extensions",
+        "List of user source files to add to the joltc library",
+    ) orelse &.{};
+
     const options_step = b.addOptions();
     inline for (std.meta.fields(@TypeOf(options))) |field| {
         options_step.addOption(field.type, field.name, @field(options, field.name));
@@ -52,21 +69,18 @@ pub fn build(b: *std.Build) void {
     });
     zjolt.addIncludePath(b.path("libs/JoltC"));
 
-    const joltc = if (options.shared) blk: {
-        const lib = b.addSharedLibrary(.{
-            .name = "joltc",
+    const joltc = b.addLibrary(.{
+        .name = "joltc",
+        .linkage = if (options.shared) .dynamic else .static,
+        .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-        });
-        if (target.result.os.tag == .windows) {
-            lib.root_module.addCMacro("JPC_API", "extern __declspec(dllexport)");
-        }
-        break :blk lib;
-    } else b.addStaticLibrary(.{
-        .name = "joltc",
-        .target = target,
-        .optimize = optimize,
+        }),
     });
+
+    if (options.shared and target.result.os.tag == .windows)
+        joltc.root_module.addCMacro("JPC_API", "extern __declspec(dllexport)");
+
     b.installArtifact(joltc);
 
     joltc.addIncludePath(b.path("libs"));
@@ -81,15 +95,12 @@ pub fn build(b: *std.Build) void {
     const src_dir = "libs/Jolt";
     const c_flags = &.{
         "-std=c++17",
-        if (options.enable_cross_platform_determinism) "-DJPH_CROSS_PLATFORM_DETERMINISTIC" else "",
-        if (options.enable_debug_renderer) "-DJPH_DEBUG_RENDERER" else "",
-        if (options.use_double_precision) "-DJPH_DOUBLE_PRECISION" else "",
-        if (options.enable_asserts) "-DJPH_ENABLE_ASSERTS" else "",
         if (options.no_exceptions) "-fno-exceptions" else "",
         "-fno-access-control",
         "-fno-sanitize=undefined",
     };
 
+    addMacros(joltc.root_module, options);
     joltc.addCSourceFiles(.{
         .files = &.{
             "libs/JoltC/JoltPhysicsC.cpp",
@@ -98,9 +109,9 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Core/Color.cpp",
             src_dir ++ "/Core/Factory.cpp",
             src_dir ++ "/Core/IssueReporting.cpp",
+            src_dir ++ "/Core/JobSystemSingleThreaded.cpp",
             src_dir ++ "/Core/JobSystemThreadPool.cpp",
             src_dir ++ "/Core/JobSystemWithBarrier.cpp",
-            src_dir ++ "/Core/JobSystemSingleThreaded.cpp",
             src_dir ++ "/Core/LinearCurve.cpp",
             src_dir ++ "/Core/Memory.cpp",
             src_dir ++ "/Core/Profiler.cpp",
@@ -123,16 +134,11 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/ObjectStream/SerializableObject.cpp",
             src_dir ++ "/ObjectStream/TypeDeclarations.cpp",
             src_dir ++ "/Physics/Body/Body.cpp",
-            src_dir ++ "/Physics/Body/BodyAccess.cpp",
             src_dir ++ "/Physics/Body/BodyCreationSettings.cpp",
             src_dir ++ "/Physics/Body/BodyInterface.cpp",
             src_dir ++ "/Physics/Body/BodyManager.cpp",
             src_dir ++ "/Physics/Body/MassProperties.cpp",
             src_dir ++ "/Physics/Body/MotionProperties.cpp",
-            src_dir ++ "/Physics/SoftBody/SoftBodyCreationSettings.cpp",
-            src_dir ++ "/Physics/SoftBody/SoftBodyMotionProperties.cpp",
-            src_dir ++ "/Physics/SoftBody/SoftBodyShape.cpp",
-            src_dir ++ "/Physics/SoftBody/SoftBodySharedSettings.cpp",
             src_dir ++ "/Physics/Character/Character.cpp",
             src_dir ++ "/Physics/Character/CharacterBase.cpp",
             src_dir ++ "/Physics/Character/CharacterVirtual.cpp",
@@ -146,6 +152,7 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Physics/Collision/CollideSphereVsTriangles.cpp",
             src_dir ++ "/Physics/Collision/CollisionDispatch.cpp",
             src_dir ++ "/Physics/Collision/CollisionGroup.cpp",
+            src_dir ++ "/Physics/Collision/EstimateCollisionResponse.cpp",
             src_dir ++ "/Physics/Collision/GroupFilter.cpp",
             src_dir ++ "/Physics/Collision/GroupFilterTable.cpp",
             src_dir ++ "/Physics/Collision/ManifoldBetweenTwoFaces.cpp",
@@ -160,16 +167,19 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Physics/Collision/Shape/ConvexShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/CylinderShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/DecoratedShape.cpp",
+            src_dir ++ "/Physics/Collision/Shape/EmptyShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/HeightFieldShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/MeshShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/MutableCompoundShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/OffsetCenterOfMassShape.cpp",
+            src_dir ++ "/Physics/Collision/Shape/PlaneShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/RotatedTranslatedShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/ScaledShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/Shape.cpp",
             src_dir ++ "/Physics/Collision/Shape/SphereShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/StaticCompoundShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/TaperedCapsuleShape.cpp",
+            src_dir ++ "/Physics/Collision/Shape/TaperedCylinderShape.cpp",
             src_dir ++ "/Physics/Collision/Shape/TriangleShape.cpp",
             src_dir ++ "/Physics/Collision/TransformedShape.cpp",
             src_dir ++ "/Physics/Constraints/ConeConstraint.cpp",
@@ -185,13 +195,13 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Physics/Constraints/PathConstraintPath.cpp",
             src_dir ++ "/Physics/Constraints/PathConstraintPathHermite.cpp",
             src_dir ++ "/Physics/Constraints/PointConstraint.cpp",
+            src_dir ++ "/Physics/Constraints/PulleyConstraint.cpp",
             src_dir ++ "/Physics/Constraints/RackAndPinionConstraint.cpp",
             src_dir ++ "/Physics/Constraints/SixDOFConstraint.cpp",
             src_dir ++ "/Physics/Constraints/SliderConstraint.cpp",
+            src_dir ++ "/Physics/Constraints/SpringSettings.cpp",
             src_dir ++ "/Physics/Constraints/SwingTwistConstraint.cpp",
             src_dir ++ "/Physics/Constraints/TwoBodyConstraint.cpp",
-            src_dir ++ "/Physics/Constraints/PulleyConstraint.cpp",
-            src_dir ++ "/Physics/Constraints/SpringSettings.cpp",
             src_dir ++ "/Physics/DeterminismLog.cpp",
             src_dir ++ "/Physics/IslandBuilder.cpp",
             src_dir ++ "/Physics/LargeIslandSplitter.cpp",
@@ -199,7 +209,12 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Physics/PhysicsSystem.cpp",
             src_dir ++ "/Physics/PhysicsUpdateContext.cpp",
             src_dir ++ "/Physics/Ragdoll/Ragdoll.cpp",
+            src_dir ++ "/Physics/SoftBody/SoftBodyCreationSettings.cpp",
+            src_dir ++ "/Physics/SoftBody/SoftBodyMotionProperties.cpp",
+            src_dir ++ "/Physics/SoftBody/SoftBodyShape.cpp",
+            src_dir ++ "/Physics/SoftBody/SoftBodySharedSettings.cpp",
             src_dir ++ "/Physics/StateRecorderImpl.cpp",
+            src_dir ++ "/Physics/Vehicle/MotorcycleController.cpp",
             src_dir ++ "/Physics/Vehicle/TrackedVehicleController.cpp",
             src_dir ++ "/Physics/Vehicle/VehicleAntiRollBar.cpp",
             src_dir ++ "/Physics/Vehicle/VehicleCollisionTester.cpp",
@@ -211,33 +226,25 @@ pub fn build(b: *std.Build) void {
             src_dir ++ "/Physics/Vehicle/VehicleTransmission.cpp",
             src_dir ++ "/Physics/Vehicle/Wheel.cpp",
             src_dir ++ "/Physics/Vehicle/WheeledVehicleController.cpp",
-            src_dir ++ "/Physics/Vehicle/MotorcycleController.cpp",
             src_dir ++ "/RegisterTypes.cpp",
             src_dir ++ "/Renderer/DebugRenderer.cpp",
-            src_dir ++ "/Renderer/DebugRendererSimple.cpp",
             src_dir ++ "/Renderer/DebugRendererPlayback.cpp",
             src_dir ++ "/Renderer/DebugRendererRecorder.cpp",
+            src_dir ++ "/Renderer/DebugRendererSimple.cpp",
             src_dir ++ "/Skeleton/SkeletalAnimation.cpp",
             src_dir ++ "/Skeleton/Skeleton.cpp",
             src_dir ++ "/Skeleton/SkeletonMapper.cpp",
             src_dir ++ "/Skeleton/SkeletonPose.cpp",
-            src_dir ++ "/TriangleGrouper/TriangleGrouperClosestCentroid.cpp",
-            src_dir ++ "/TriangleGrouper/TriangleGrouperMorton.cpp",
             src_dir ++ "/TriangleSplitter/TriangleSplitter.cpp",
             src_dir ++ "/TriangleSplitter/TriangleSplitterBinning.cpp",
-            src_dir ++ "/TriangleSplitter/TriangleSplitterFixedLeafSize.cpp",
-            src_dir ++ "/TriangleSplitter/TriangleSplitterLongestAxis.cpp",
             src_dir ++ "/TriangleSplitter/TriangleSplitterMean.cpp",
-            src_dir ++ "/TriangleSplitter/TriangleSplitterMorton.cpp",
         },
         .flags = c_flags,
     });
 
-    if (target.result.abi != .msvc or optimize != .Debug) {
-        joltc.addCSourceFiles(.{
-            .files = &.{
-                src_dir ++ "/Physics/PhysicsLock.cpp",
-            },
+    for (user_extensions) |user_extension| {
+        joltc.addCSourceFile(.{
+            .file = user_extension,
             .flags = c_flags,
         });
     }
@@ -246,9 +253,11 @@ pub fn build(b: *std.Build) void {
 
     const tests = b.addTest(.{
         .name = "zphysics-tests",
-        .root_source_file = b.path("src/zphysics.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/zphysics.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     b.installArtifact(tests);
 
@@ -257,16 +266,16 @@ pub fn build(b: *std.Build) void {
         tests.want_lto = false;
     }
 
+    addMacros(tests.root_module, options);
     tests.addCSourceFile(.{
         .file = b.path("libs/JoltC/JoltPhysicsC_Tests.c"),
         .flags = &.{
-            if (options.enable_cross_platform_determinism) "-DJPH_CROSS_PLATFORM_DETERMINISTIC" else "",
-            if (options.enable_debug_renderer) "-DJPH_DEBUG_RENDERER" else "",
-            if (options.use_double_precision) "-DJPH_DOUBLE_PRECISION" else "",
-            if (options.enable_asserts) "-DJPH_ENABLE_ASSERTS" else "",
             "-fno-sanitize=undefined",
         },
     });
+
+    if (b.option(bool, "verbose", "Print verbose test debug output to stderr") orelse false)
+        tests.root_module.addCMacro("PRINT_OUTPUT", "");
 
     tests.root_module.addImport("zphysics_options", options_module);
     tests.addIncludePath(b.path("libs/JoltC"));

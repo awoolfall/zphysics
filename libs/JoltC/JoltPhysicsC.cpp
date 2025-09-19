@@ -60,8 +60,8 @@ JPH_SUPPRESS_WARNINGS
 
 #define FN(name) static auto name
 
-FN(toJph)(JPC_BodyID in) { return JPH::BodyID(in); }
-FN(toJpc)(JPH::BodyID in) { return in.GetIndexAndSequenceNumber(); }
+FN(toJph)(JPC_BodyID in) { return JPH::BodyID(in.id); }
+FN(toJpc)(JPH::BodyID in) { return (JPC_BodyID){ in.GetIndexAndSequenceNumber() }; }
 
 FN(toJpc)(const JPH::Body *in) { assert(in); return reinterpret_cast<const JPC_Body *>(in); }
 FN(toJph)(const JPC_Body *in) { assert(in); return reinterpret_cast<const JPH::Body *>(in); }
@@ -301,6 +301,8 @@ FN(toJpc)(const JPH::CollisionGroup *in) { assert(in); return reinterpret_cast<c
 FN(toJpc)(JPH::CollisionGroup *in) { assert(in); return reinterpret_cast<JPC_CollisionGroup *>(in); }
 
 FN(toJph)(const JPC_SubShapeID *in) { assert(in); return reinterpret_cast<const JPH::SubShapeID *>(in); }
+FN(toJph)(const JPC_BodyID *in) { assert(in); return reinterpret_cast<const JPH::BodyID *>(in); }
+FN(toJph)(JPC_BodyID *in) { assert(in); return reinterpret_cast<JPH::BodyID *>(in); }
 
 FN(toJpc)(const JPH::SubShapeIDCreator *in) { assert(in); return reinterpret_cast<const JPC_SubShapeIDCreator *>(in); }
 FN(toJph)(const JPC_SubShapeIDCreator *in) { assert(in); return reinterpret_cast<const JPH::SubShapeIDCreator *>(in); }
@@ -351,6 +353,9 @@ FN(toJpc)(const JPH::BodyInterface *in) { assert(in); return reinterpret_cast<co
 FN(toJph)(const JPC_BodyInterface *in) { assert(in); return reinterpret_cast<const JPH::BodyInterface *>(in); }
 FN(toJpc)(JPH::BodyInterface *in) { assert(in); return reinterpret_cast<JPC_BodyInterface *>(in); }
 FN(toJph)(JPC_BodyInterface *in) { assert(in); return reinterpret_cast<JPH::BodyInterface *>(in); }
+
+FN(toJpc)(JPH::BodyInterface::AddState in) { assert(in); return reinterpret_cast<JPC_BodyInterface_AddState* >(in); }
+FN(toJph)(JPC_BodyInterface_AddState* in) { assert(in); return reinterpret_cast<JPH::BodyInterface::AddState >(in); }
 
 FN(toJpc)(const JPH::TransformedShape *in) { assert(in); return reinterpret_cast<const JPC_TransformedShape *>(in); }
 
@@ -735,7 +740,14 @@ public:
     {
     public:
         JPH_OVERRIDE_NEW_DELETE
-        BatchImpl(const JPC_DebugRenderer_Primitive *prim) : RenderPrimitive(prim) { }
+        BatchImpl(const JPC_DebugRenderer_Primitive *c_primitive) : RenderPrimitive(c_primitive) {}
+        ~BatchImpl()
+        {
+            if (sInstance)
+            {
+                sInstance->c_renderer->vtbl->DestroyTriangleBatch(sInstance->c_renderer, (void*)c_primitive);
+            }
+        }
 
         virtual void AddRef() override
         {
@@ -782,6 +794,7 @@ public:
         valid &= (c_renderer->vtbl->DrawTriangle               != nullptr);
         valid &= (c_renderer->vtbl->CreateTriangleBatch        != nullptr);
         valid &= (c_renderer->vtbl->CreateTriangleBatchIndexed != nullptr);
+        valid &= (c_renderer->vtbl->DestroyTriangleBatch       != nullptr);
         valid &= (c_renderer->vtbl->DrawGeometry               != nullptr);
         valid &= (c_renderer->vtbl->DrawText3D                 != nullptr);
         return valid ? JPC_DEBUGRENDERER_SUCCESS : JPC_DEBUGRENDERER_INCOMPLETE_IMPL;
@@ -1138,17 +1151,17 @@ JPC_PhysicsSystem_RemoveStepListener(JPC_PhysicsSystem *in_physics_system, void 
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API void
-JPC_PhysicsSystem_AddConstraint(JPC_PhysicsSystem *in_physics_system, void *in_two_body_constraint)
+JPC_PhysicsSystem_AddConstraint(JPC_PhysicsSystem *in_physics_system, JPC_Constraint *in_constraint)
 {
-    assert(in_two_body_constraint != nullptr);
-    toJph(in_physics_system)->AddConstraint(static_cast<JPH::TwoBodyConstraint *>(in_two_body_constraint));
+    assert(in_constraint != nullptr);
+    toJph(in_physics_system)->AddConstraint(toJph(in_constraint));
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API void
-JPC_PhysicsSystem_RemoveConstraint(JPC_PhysicsSystem *in_physics_system, void *in_two_body_constraint)
+JPC_PhysicsSystem_RemoveConstraint(JPC_PhysicsSystem *in_physics_system, JPC_Constraint *in_constraint)
 {
-    assert(in_two_body_constraint != nullptr);
-    toJph(in_physics_system)->RemoveConstraint(static_cast<JPH::TwoBodyConstraint *>(in_two_body_constraint));
+    assert(in_constraint != nullptr);
+    toJph(in_physics_system)->RemoveConstraint(toJph(in_constraint));
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API JPC_PhysicsUpdateError
@@ -2413,6 +2426,31 @@ JPC_BodyInterface_DestroyBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API void
+JPC_BodyInterface_AddBodiesAbort(JPC_BodyInterface *in_iface,
+                                 JPC_BodyID* in_body_ids,
+                                 int in_num_bodies,
+                                 JPC_BodyInterface_AddState* add_state)
+{
+    return toJph(in_iface)->AddBodiesAbort(toJph(in_body_ids), in_num_bodies, toJph(add_state));
+}
+//--------------------------------------------------------------------------------------------------
+JPC_API void
+JPC_BodyInterface_AddBodiesFinalize(JPC_BodyInterface *in_iface,
+                                    JPC_BodyID* in_body_ids,
+                                    int in_num_bodies,
+                                    JPC_BodyInterface_AddState* add_state,
+                                    JPC_Activation in_mode)
+{
+    return toJph(in_iface)->AddBodiesFinalize(toJph(in_body_ids), in_num_bodies, toJph(add_state), static_cast<JPH::EActivation>(in_mode));
+}
+//--------------------------------------------------------------------------------------------------
+JPC_API JPC_BodyInterface_AddState*
+JPC_BodyInterface_AddBodiesPrepare(JPC_BodyInterface *in_iface, JPC_BodyID* in_body_ids, int in_num_bodies)
+{
+    return toJpc(toJph(in_iface)->AddBodiesPrepare(toJph(in_body_ids), in_num_bodies));
+}
+//--------------------------------------------------------------------------------------------------
+JPC_API void
 JPC_BodyInterface_AddBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id, JPC_Activation in_mode)
 {
     toJph(in_iface)->AddBody(toJph(in_body_id), static_cast<JPH::EActivation>(in_mode));
@@ -2569,9 +2607,21 @@ JPC_BodyInterface_ActivateBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_i
 }
 
 JPC_API void
+JPC_BodyInterface_ActivateBodies(JPC_BodyInterface *in_iface, const JPC_BodyID *in_body_ids, int in_num_bodies)
+{
+    toJph(in_iface)->ActivateBodies(toJph(in_body_ids), in_num_bodies);
+}
+
+JPC_API void
 JPC_BodyInterface_DeactivateBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id)
 {
     toJph(in_iface)->DeactivateBody(toJph(in_body_id));
+}
+
+JPC_API void
+JPC_BodyInterface_DeactivateBodies(JPC_BodyInterface *in_iface, const JPC_BodyID *in_body_ids, int in_num_bodies)
+{
+    toJph(in_iface)->DeactivateBodies(toJph(in_body_ids), in_num_bodies);
 }
 
 JPC_API bool
@@ -2678,7 +2728,7 @@ JPC_BodyInterface_SetObjectLayer(JPC_BodyInterface *in_iface, JPC_BodyID in_body
 JPC_API JPC_BodyID
 JPC_Body_GetID(const JPC_Body *in_body)
 {
-    return toJph(in_body)->GetID().GetIndexAndSequenceNumber();
+    return (JPC_BodyID){ toJph(in_body)->GetID().GetIndexAndSequenceNumber() };
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API bool
@@ -3026,6 +3076,12 @@ JPC_Body_GetWorldSpaceSurfaceNormal(const JPC_Body *in_body,
     storeVec3(out_normal_vector, v);
 }
 //--------------------------------------------------------------------------------------------------
+JPC_API JPC_Body*
+JPC_Body_GetFixedToWorld()
+{
+    return toJpc(&JPH::Body::sFixedToWorld);
+}
+//--------------------------------------------------------------------------------------------------
 //
 // JPC_MotionProperties
 //
@@ -3251,19 +3307,19 @@ JPC_MotionProperties_SetMaxAngularVelocity(JPC_MotionProperties *in_properties,
 JPC_API uint32_t
 JPC_BodyID_GetIndex(JPC_BodyID in_body_id)
 {
-    return JPH::BodyID(in_body_id).GetIndex();
+    return JPH::BodyID(in_body_id.id).GetIndex();
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API uint8_t
 JPC_BodyID_GetSequenceNumber(JPC_BodyID in_body_id)
 {
-    return JPH::BodyID(in_body_id).GetSequenceNumber();
+    return JPH::BodyID(in_body_id.id).GetSequenceNumber();
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API bool
 JPC_BodyID_IsInvalid(JPC_BodyID in_body_id)
 {
-    return JPH::BodyID(in_body_id).IsInvalid();
+    return JPH::BodyID(in_body_id.id).IsInvalid();
 }
 //--------------------------------------------------------------------------------------------------
 //

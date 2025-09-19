@@ -13,6 +13,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/PhysicsSettings.h>
+#include <Jolt/Physics/PhysicsStepListener.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
@@ -30,10 +31,6 @@
 #include <Jolt/Physics/Character/Character.h>
 #include <Jolt/Physics/Character/CharacterBase.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
-
-#if defined(_MSC_VER) && defined(_DEBUG)
-#include <Jolt/Physics/PhysicsLock.cpp>
-#endif
 
 JPH_SUPPRESS_WARNINGS
 //--------------------------------------------------------------------------------------------------
@@ -65,7 +62,7 @@ JPC_PhysicsSystem_GetBodyIDs(const JPC_PhysicsSystem *in_physics_system,
     for (const JPH::Body *b : physics_system->mBodyManager.mBodies)
         if (JPH::BodyManager::sIsValidBodyPointer(b))
         {
-            *out_body_ids = b->GetID().GetIndexAndSequenceNumber();
+            out_body_ids->id = b->GetID().GetIndexAndSequenceNumber();
             out_body_ids += 1;
             if (out_num_body_ids) *out_num_body_ids += 1;
             in_max_body_ids -= 1;
@@ -94,7 +91,7 @@ JPC_PhysicsSystem_GetActiveBodyIDs(const JPC_PhysicsSystem *in_physics_system,
     for (uint32_t i = 0; i < physics_system->mBodyManager.mNumActiveBodies[0]; ++i)
     {
         const JPH::BodyID body_id = physics_system->mBodyManager.mActiveBodies[0][i];
-        *out_body_ids = body_id.GetIndexAndSequenceNumber();
+        out_body_ids->id = body_id.GetIndexAndSequenceNumber();
         out_body_ids += 1;
         if (out_num_body_ids) *out_num_body_ids += 1;
         in_max_body_ids -= 1;
@@ -165,6 +162,7 @@ ENSURE_SIZE_ALIGN(JPH::Shape::SupportingFace, JPC_Shape_SupportingFace)
 ENSURE_SIZE_ALIGN(JPH::CharacterVirtual::ExtendedUpdateSettings, JPC_CharacterVirtual_ExtendedUpdateSettings)
 ENSURE_SIZE_ALIGN(JPH::RMat44, JPC_RMatrix)
 
+ENSURE_SIZE_ALIGN(JPH::PhysicsStepListenerContext, JPC_PhysicsStepListenerContext)
 //--------------------------------------------------------------------------------------------------
 #define ENSURE_ENUM_EQ(c_const, cpp_enum) static_assert(c_const == static_cast<int>(cpp_enum))
 
@@ -302,7 +300,8 @@ static_assert(offsetof(JPH::RayCastResult, mBodyID) == offsetof(JPC_RayCastResul
 static_assert(offsetof(JPH::RayCastResult, mFraction) == offsetof(JPC_RayCastResult, fraction));
 static_assert(offsetof(JPH::RayCastResult, mSubShapeID2) == offsetof(JPC_RayCastResult, sub_shape_id));
 
-static_assert(offsetof(JPH::RayCastSettings, mBackFaceMode) == offsetof(JPC_RayCastSettings, back_face_mode));
+static_assert(offsetof(JPH::RayCastSettings, mBackFaceModeTriangles) == offsetof(JPC_RayCastSettings, back_face_mode_triangles));
+static_assert(offsetof(JPH::RayCastSettings, mBackFaceModeConvex) == offsetof(JPC_RayCastSettings, back_face_mode_convex));
 static_assert(offsetof(JPH::RayCastSettings, mTreatConvexAsSolid) ==
     offsetof(JPC_RayCastSettings, treat_convex_as_solid));
 

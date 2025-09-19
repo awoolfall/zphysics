@@ -61,8 +61,8 @@ typedef float JPC_Real;
 
 #define JPC_BODY_ID_INVALID 0xffffffff
 #define JPC_BODY_ID_INDEX_BITS 0x007fffff
-#define JPC_BODY_ID_SEQUENCE_BITS 0xff000000
-#define JPC_BODY_ID_SEQUENCE_SHIFT 24
+#define JPC_BODY_ID_SEQUENCE_BITS 0x7F800000
+#define JPC_BODY_ID_SEQUENCE_SHIFT 23
 
 #define JPC_SUB_SHAPE_ID_EMPTY 0xffffffff
 
@@ -292,9 +292,19 @@ typedef enum JPC_ShapeColor {
 typedef uint16_t JPC_ObjectLayer;
 typedef uint8_t  JPC_BroadPhaseLayer;
 
+typedef struct JPC_BodyID
+{
+    uint32_t id;
+} JPC_BodyID;
+
+typedef struct JPC_SubShapeID
+{
+    uint32_t id;
+} JPC_SubShapeID;
+
+#define JPC_ID_EQ(a, b) (a.id == b.id)
+
 // TODO: Consider using structures for IDs
-typedef uint32_t JPC_BodyID;
-typedef uint32_t JPC_SubShapeID;
 typedef uint32_t JPC_CollisionGroupID;
 typedef uint32_t JPC_CollisionSubGroupID;
 
@@ -320,6 +330,7 @@ typedef bool (*JPC_AssertFailedFunction)(
 typedef struct JPC_TempAllocator     JPC_TempAllocator;
 typedef struct JPC_JobSystem         JPC_JobSystem;
 typedef struct JPC_BodyInterface     JPC_BodyInterface;
+typedef struct JPC_BodyInterface_AddState JPC_BodyInterface_AddState;
 typedef struct JPC_BodyLockInterface JPC_BodyLockInterface;
 typedef struct JPC_NarrowPhaseQuery  JPC_NarrowPhaseQuery;
 
@@ -505,6 +516,7 @@ typedef struct JPC_CharacterSettings
     float mass;
     float friction;
     float gravity_factor;
+    JPC_AllowedDOFs allowed_dofs;
 } JPC_CharacterSettings;
 
 // NOTE: Needs to be kept in sync
@@ -652,7 +664,8 @@ typedef struct JPC_RayCastResult
 // NOTE: Needs to be kept in sync with JPH::RayCastSettings
 typedef struct JPC_RayCastSettings
 {
-    JPC_BackFaceMode back_face_mode;
+    JPC_BackFaceMode back_face_mode_triangles;
+    JPC_BackFaceMode back_face_mode_convex;
     bool             treat_convex_as_solid;
 } JPC_RayCastSettings;
 
@@ -913,13 +926,22 @@ typedef struct JPC_CollideShapeCollectorVTable
             const JPC_CollideShapeResult *in_result);
 } JPC_CollideShapeCollectorVTable;
 
+// NOTE: Needs to be kept in sync with JPH::PhysicsStepListenerContext
+typedef struct JPC_PhysicsStepListenerContext
+{
+    float delta_time;
+    bool is_first_step;
+    bool is_last_step;
+    JPC_PhysicsSystem *physics_system;
+} JPC_PhysicsStepListenerContext;
+
 typedef struct JPC_PhysicsStepListenerVTable
 {
     _JPC_VTABLE_HEADER;
 
     // Required, *cannot* be NULL.
     void
-    (*OnStep)(float in_delta_time, JPC_PhysicsSystem *in_physics_system);
+    (*OnStep)(JPC_PhysicsStepListenerContext*);
 } JPC_PhysicsStepListener;
 
 // Made all callbacks required for this one for simplicity's sake, but can be modified to imitate ContactListener later.
@@ -961,6 +983,23 @@ typedef struct JPC_CharacterContactListenerVTable
 
     // Required, *cannot* be NULL.
     void
+    (*OnContactPersisted)(void *in_self,
+                          const JPC_CharacterVirtual *in_character,
+                          const JPC_Body *in_body2,
+                          const JPC_SubShapeID *sub_shape_id,
+                          const JPC_Real contact_position[3],
+                          const float contact_normal[3],
+                          JPC_CharacterContactSettings *io_settings);
+
+    // Required, *cannot* be NULL.
+    void
+    (*OnContactRemoved)(void *in_self,
+                        const JPC_CharacterVirtual *in_character,
+                        const JPC_Body *in_body2,
+                        const JPC_SubShapeID *sub_shape_id);
+
+    // Required, *cannot* be NULL.
+    void
     (*OnCharacterContactAdded)(void *in_self,
                                const JPC_CharacterVirtual *in_character,
                                const JPC_CharacterVirtual *in_other_character,
@@ -968,6 +1007,23 @@ typedef struct JPC_CharacterContactListenerVTable
                                const JPC_Real contact_position[3],
                                const float contact_normal[3],
                                JPC_CharacterContactSettings *io_settings);
+
+    // Required, *cannot* be NULL.
+    void
+    (*OnCharacterContactPersisted)(void *in_self,
+                                   const JPC_CharacterVirtual *in_character,
+                                   const JPC_CharacterVirtual *in_other_character,
+                                   const JPC_SubShapeID *sub_shape_id,
+                                   const JPC_Real contact_position[3],
+                                   const float contact_normal[3],
+                                   JPC_CharacterContactSettings *io_settings);
+
+    // Required, *cannot* be NULL.
+    void
+    (*OnCharacterContactRemoved)(void *in_self,
+                                 const JPC_CharacterVirtual *in_character,
+                                 const JPC_CharacterVirtual *in_other_character,
+                                 const JPC_SubShapeID *sub_shape_id);
 
     // Required, *cannot* be NULL.
     void
@@ -1058,6 +1114,10 @@ typedef struct JPC_DebugRendererVTable
                                   uint32_t in_vertex_count,
                                   const uint32_t *in_indices,
                                   uint32_t in_index_count);
+
+    // Optional
+    void
+    (*DestroyTriangleBatch)(void *in_self, void *in_primitive);
 
     // Required, *cannot* be NULL.
     void
@@ -1342,10 +1402,10 @@ JPC_API void
 JPC_PhysicsSystem_RemoveStepListener(JPC_PhysicsSystem *in_physics_system, void *in_listener);
 
 JPC_API void
-JPC_PhysicsSystem_AddConstraint(JPC_PhysicsSystem *in_physics_system, void *in_two_body_constraint);
+JPC_PhysicsSystem_AddConstraint(JPC_PhysicsSystem *in_physics_system, JPC_Constraint *in_constraint);
 
 JPC_API void
-JPC_PhysicsSystem_RemoveConstraint(JPC_PhysicsSystem *in_physics_system, void *in_two_body_constraint);
+JPC_PhysicsSystem_RemoveConstraint(JPC_PhysicsSystem *in_physics_system, JPC_Constraint *in_constraint);
 
 JPC_API JPC_PhysicsUpdateError
 JPC_PhysicsSystem_Update(JPC_PhysicsSystem *in_physics_system,
@@ -1391,9 +1451,9 @@ JPC_PhysicsSystem_GetActiveBodyIDs(const JPC_PhysicsSystem *in_physics_system,
 /// Access a body, will return NULL if the body ID is no longer valid.
 /// Use `JPC_PhysicsSystem_GetBodiesUnsafe()` to get an array of all body pointers.
 #define JPC_TRY_GET_BODY(all_body_ptrs, body_id) \
-    JPC_IS_VALID_BODY_POINTER(all_body_ptrs[body_id & JPC_BODY_ID_INDEX_BITS]) && \
-    all_body_ptrs[body_id & JPC_BODY_ID_INDEX_BITS]->id == body_id ? \
-    all_body_ptrs[body_id & JPC_BODY_ID_INDEX_BITS] : NULL
+    JPC_IS_VALID_BODY_POINTER(all_body_ptrs[body_id.id & JPC_BODY_ID_INDEX_BITS]) && \
+    all_body_ptrs[body_id.id & JPC_BODY_ID_INDEX_BITS]->id.id == body_id.id ? \
+    all_body_ptrs[body_id.id & JPC_BODY_ID_INDEX_BITS] : NULL
 
 /// Get direct access to all bodies. Not protected by a lock. Use with great care!
 JPC_API JPC_Body **
@@ -2003,6 +2063,22 @@ JPC_API void
 JPC_BodyInterface_DestroyBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id);
 
 JPC_API void
+JPC_BodyInterface_AddBodiesAbort(JPC_BodyInterface *in_iface,
+                                 JPC_BodyID* in_body_ids,
+                                 int in_num_bodies,
+                                 JPC_BodyInterface_AddState* add_state);
+
+JPC_API void
+JPC_BodyInterface_AddBodiesFinalize(JPC_BodyInterface *in_iface,
+                                    JPC_BodyID* in_body_ids,
+                                    int in_num_bodies,
+                                    JPC_BodyInterface_AddState* add_state,
+                                    JPC_Activation in_mode);
+
+JPC_API JPC_BodyInterface_AddState*
+JPC_BodyInterface_AddBodiesPrepare(JPC_BodyInterface *in_iface, JPC_BodyID* in_body_ids, int in_num_bodies);
+
+JPC_API void
 JPC_BodyInterface_AddBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id, JPC_Activation in_mode);
 
 JPC_API void
@@ -2081,7 +2157,13 @@ JPC_API void
 JPC_BodyInterface_ActivateBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id);
 
 JPC_API void
+JPC_BodyInterface_ActivateBodies(JPC_BodyInterface *in_iface, const JPC_BodyID* in_body_ids, int in_num_bodies);
+
+JPC_API void
 JPC_BodyInterface_DeactivateBody(JPC_BodyInterface *in_iface, JPC_BodyID in_body_id);
+
+JPC_API void
+JPC_BodyInterface_DeactivateBodies(JPC_BodyInterface *in_iface, const JPC_BodyID* in_body_ids, int in_num_bodies);
 
 JPC_API bool
 JPC_BodyInterface_IsActive(const JPC_BodyInterface *in_iface, JPC_BodyID in_body_id);
@@ -2303,6 +2385,8 @@ JPC_Body_GetWorldSpaceSurfaceNormal(const JPC_Body *in_body,
                                     JPC_SubShapeID in_sub_shape_id,
                                     const JPC_Real in_position[3], // world space
                                     float out_normal_vector[3]);
+JPC_API JPC_Body*
+JPC_Body_GetFixedToWorld();
 //--------------------------------------------------------------------------------------------------
 //
 // JPC_BodyID
