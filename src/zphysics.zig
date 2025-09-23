@@ -639,59 +639,30 @@ pub const ShapeFilter = extern struct {
 pub const CollideShapeCollector = extern struct {
     __v: *const VTable,
 
-    pub usingnamespace Methods(@This());
-
-    pub fn Methods(comptime T: type) type {
-        return extern struct {
-            pub inline fn Reset(
-                self: *T
-            ) void {
-                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).Reset();
-            }
-            pub inline fn OnBody(
-                self: *T,
-                in_body: *const Body
-            ) void {
-                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).OnBody(
-                    in_body
-                );
-            }
-            pub inline fn SetUserData(
-                self: *T,
-                in_user_data: u64,
-            ) void {
-                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).SetUserData(
-                    in_user_data
-                );
-            }
-            pub inline fn AddHit(
-                self: *T,
-                in_result: *const CollideShapeResult
-            ) void {
-                @as(*CollideShapeCollector.VTable, @ptrCast(self.__v)).AddHit(
-                    in_result
-                );
-            }
-        };
+    pub fn init(comptime T: type) CollideShapeCollector {
+        return .{ .__v = initInterface(T, VTable) };
     }
 
     pub const VTable = extern struct {
         __header: VTableHeader = .{},
         reset: *const fn(
             self: *CollideShapeCollector
-        ) callconv(.C) void,
+        ) callconv(.c) void,
         onBody: *const fn(
             self: *CollideShapeCollector,
             in_body: *const Body
-        ) callconv(.C) void,
+        ) callconv(.c) void,
+        onBodyEnd: *const fn(
+            self: *CollideShapeCollector,
+        ) callconv(.c) void,
         setUserData: *const fn(
             self: *CollideShapeCollector,
             user_data: u64,
-        ) callconv(.C) void,
+        ) callconv(.c) void,
         addHit: *const fn(
             self: *CollideShapeCollector,
             in_result: *const CollideShapeResult
-        ) callconv(.C) void,
+        ) callconv(.c) void,
     };
 
     comptime {
@@ -2497,7 +2468,7 @@ pub const Character = opaque {
     }
 
     pub fn getBodyId(character: *Character) BodyId {
-        return c.JPC_Character_GetBodyID(@as(*c.JPC_Character, @ptrCast(character)));
+        return @enumFromInt(c.JPC_Character_GetBodyID(@as(*c.JPC_Character, @ptrCast(character))).id);
     }
 
     pub fn getPosition(character: *const Character) [3]Real {
