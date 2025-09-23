@@ -914,6 +914,10 @@ typedef struct JPC_CollideShapeCollectorVTable
     void
     (*OnBody)(void *in_self,
             const JPC_Body *in_body);
+    
+    // Required, *cannot* be NULL.
+    void
+    (*OnBodyEnd)(void *in_self);
 
     // Required, *cannot* be NULL.
     void
