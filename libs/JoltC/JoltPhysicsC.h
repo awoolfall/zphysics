@@ -902,6 +902,34 @@ typedef struct JPC_ShapeFilterVTable
     uint32_t bodyId2;
 } JPC_ShapeFilterVTable;
 
+typedef struct JPC_CollideShapeCollectorVTable
+{
+    _JPC_VTABLE_HEADER;
+
+    // Required, *cannot* be NULL.
+    void
+    (*Reset)(void *in_self);
+
+    // Required, *cannot* be NULL.
+    void
+    (*OnBody)(void *in_self,
+            const JPC_Body *in_body);
+    
+    // Required, *cannot* be NULL.
+    void
+    (*OnBodyEnd)(void *in_self);
+
+    // Required, *cannot* be NULL.
+    void
+    (*SetUserData)(void *in_self,
+            const uint64_t *in_user_data);
+
+    // Required, *cannot* be NULL.
+    void
+    (*AddHit)(void *in_self,
+            const JPC_CollideShapeResult *in_result);
+} JPC_CollideShapeCollectorVTable;
+
 // NOTE: Needs to be kept in sync with JPH::PhysicsStepListenerContext
 typedef struct JPC_PhysicsStepListenerContext
 {
