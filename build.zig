@@ -87,7 +87,10 @@ pub fn build(b: *std.Build) void {
 
     joltc.root_module.addIncludePath(b.path("libs"));
     joltc.root_module.addIncludePath(b.path("libs/JoltC"));
-    if (target.result.abi == .msvc) {
+    joltc.root_module.link_libc = true;
+    if (target.result.abi != .msvc) {
+        joltc.root_module.link_libcpp = true;
+    } else {
         joltc.root_module.linkSystemLibrary("advapi32", .{});
     }
 
@@ -279,6 +282,7 @@ pub fn build(b: *std.Build) void {
 
     tests.root_module.addImport("zphysics_options", options_module);
     tests.root_module.addIncludePath(b.path("libs/JoltC"));
+    tests.root_module.linkLibrary(joltc);
 
     test_step.dependOn(&b.addRunArtifact(tests).step);
 }
